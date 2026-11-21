@@ -5,6 +5,7 @@ module Test.Flow.Example
   , byItems
   , bySteps
   , kitchen
+  , shops
   , suite
   ) where
 
@@ -15,7 +16,7 @@ import Data.Maybe (Maybe(..))
 import Data.Set as Set
 import Effect (Effect)
 import Hylograph.Flow (Drawing(..), Flow(..), ItemId(..), PortName(..), Projection, StepId(..), WireId(..), plain, problems, project, unFlow)
-import Hylograph.Flow.Grouping (Collapsed, GroupId(..), Grouping(..), collapse)
+import Hylograph.Flow.Grouping (Collapsed(..), CollapsedItem, GroupId(..), Grouping(..), collapse)
 import Test.Flow.Check (expect, section)
 
 -- | Flour and water are mixed into dough; dough is baked into bread.
@@ -48,10 +49,22 @@ bySteps = project Steps bakery
 
 -- | Both steps shut into one group. The dough, which only the group writes
 -- | and reads, is hidden; the group reads flour and water and writes bread.
-kitchen :: Flow Unit (Collapsed Unit) Unit
+kitchen :: Flow (CollapsedItem Unit) (Collapsed Unit Unit) Unit
 kitchen = collapse
   [ Group (GroupId "kitchen") "Kitchen" [ Member (StepId "mix"), Member (StepId "bake") ] ]
   (Set.singleton (GroupId "kitchen"))
+  bakery
+
+-- | A group holds items as well as steps. The larder holds the flour and
+-- | the water; the kitchen holds its two steps, the dough and the bread.
+-- | Both shut, there are two steps and one item between them: the larder's
+-- | summary, which the larder writes and the kitchen reads.
+shops :: Flow (CollapsedItem Unit) (Collapsed Unit Unit) Unit
+shops = collapse
+  [ Group (GroupId "larder") "Larder" [ Holds (ItemId "flour"), Holds (ItemId "water") ]
+  , Group (GroupId "kitchen") "Kitchen" [ Member (StepId "mix"), Member (StepId "bake"), Holds (ItemId "dough"), Holds (ItemId "bread") ]
+  ]
+  (Set.fromFoldable [ GroupId "larder", GroupId "kitchen" ])
   bakery
 
 suite :: Effect Unit
@@ -65,4 +78,17 @@ suite = do
         && map _.id (unFlow kitchen).items == [ ItemId "flour", ItemId "water", ItemId "bread" ]
         && Array.length (unFlow kitchen).wires == 3
         && problems kitchen == []
+        && map _.inputs (unFlow kitchen).steps == [ [ MemberPort (StepId "mix") (PortName "dry"), MemberPort (StepId "mix") (PortName "wet") ] ]
+        && map _.outputs (unFlow kitchen).steps == [ [ MemberPort (StepId "bake") (PortName "out") ] ]
+    )
+  expect "the shops are two steps, the larder's summary between them, and two wires; as steps, one edge"
+    ( map _.id (unFlow shops).steps == [ GroupStep (GroupId "kitchen"), GroupStep (GroupId "larder") ]
+        && map _.id (unFlow shops).items == [ GroupItem (GroupId "larder") ]
+        && map _.id (unFlow shops).wires ==
+          [ Writes (GroupStep (GroupId "larder")) (SummaryPort (GroupId "larder")) (GroupItem (GroupId "larder"))
+          , Reads (GroupItem (GroupId "larder")) (GroupStep (GroupId "kitchen")) (SummaryPort (GroupId "larder"))
+          ]
+        && Array.length (project Steps shops).edges == 1
+        && map _.payload (Array.take 1 (unFlow shops).steps) == [ Closed (GroupId "kitchen") { steps: [ unit, unit ], items: [ unit, unit ] } ]
+        && problems shops == []
     )

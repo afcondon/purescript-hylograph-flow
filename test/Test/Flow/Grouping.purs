@@ -10,7 +10,7 @@ import Data.Maybe (Maybe(..))
 import Data.Set as Set
 import Effect (Effect)
 import Hylograph.Flow (Drawing(..), Flow(..), ItemId(..), PortName(..), StepId(..), WireId(..), mapPayloads, portLabel, problems, project, stepLabel, unFlow)
-import Hylograph.Flow.Grouping (Collapsed(..), GroupId(..), Grouping(..), collapse, groupStep, members)
+import Hylograph.Flow.Grouping (Collapsed(..), CollapsedItem(..), GroupId(..), Grouping(..), collapse, groupStep, members)
 import Hylograph.Flow.Laws (projectionFaults)
 import Test.Flow.Check (expect, expectNone, section)
 import Test.Flow.Fixtures (Bare, bare, fixtures, item, reads, step, writes)
@@ -65,9 +65,9 @@ forest =
   ]
 
 -- | What collapsing nothing is: the same flow, each step's payload wrapped
--- | in `Kept`.
-kept :: forall item step wire. Flow item step wire -> Flow item (Collapsed step) wire
-kept = mapPayloads identity Kept identity
+-- | in `Kept` and each item's in `KeptItem`.
+kept :: forall item step wire. Flow item step wire -> Flow (CollapsedItem item) (Collapsed item step) wire
+kept = mapPayloads KeptItem Kept identity
 
 wire :: forall wire. WireId -> wire -> { id :: WireId, payload :: wire }
 wire id payload = { id, payload }
@@ -118,7 +118,7 @@ suite = do
   section "collapse: nothing closed"
   -- "Identity" cannot be equality with the flow itself, since the result's
   -- steps carry `Collapsed step`. It is: `collapse forest Set.empty flow`
-  -- equals `mapPayloads identity Kept identity flow`, the same items, steps
+  -- equals `mapPayloads KeptItem Kept identity flow`, the same items, steps
   -- and wires in the same order with every step's payload in `Kept`, for
   -- any forest, provided no two wires and no two steps of the flow share
   -- an identity (two that do are merged, which is `collapse`'s other job).
@@ -142,10 +142,10 @@ suite = do
   let innerShut = unFlow (collapse forest (Set.singleton inner) (pipeline inOrder))
   expect "b, which only the group writes and reads, is hidden; the other items stay"
     (map _.id innerShut.items == [ ItemId "a", ItemId "c", ItemId "d", ItemId "e" ])
-  expect "f and g are one step where f was, named for the group, with their payloads in step order; h and k are kept"
+  expect "f and g are one step where f was, named for the group, with their payloads in step order and the hidden item's; h and k are kept"
     ( map _.id innerShut.steps == [ GroupStep inner, StepId "h", StepId "k" ]
         && map _.name innerShut.steps == [ Just "Inner", Just "h", Just "k" ]
-        && map _.payload innerShut.steps == [ Closed inner [ "f", "g" ], Kept "h", Kept "k" ]
+        && map _.payload innerShut.steps == [ Closed inner { steps: [ "f", "g" ], items: [ unit ] }, Kept "h", Kept "k" ]
     )
   expect "the group's ports are its members' ports that still meet a wire or never did, each the member and its port"
     ( map _.inputs innerShut.steps == [ [ member "f" "in" ], [ PortName "in" ], [ PortName "in", PortName "spare" ] ]
@@ -173,7 +173,7 @@ suite = do
   expect "a closed group shuts everything under it: f, g and h are one step, b and c are hidden"
     ( map _.id outerShut.items == [ ItemId "a", ItemId "d", ItemId "e" ]
         && map _.id outerShut.steps == [ GroupStep outer, StepId "k" ]
-        && map _.payload outerShut.steps == [ Closed outer [ "f", "g", "h" ], Kept "k" ]
+        && map _.payload outerShut.steps == [ Closed outer { steps: [ "f", "g", "h" ], items: [ unit, unit ] }, Kept "k" ]
         && map _.inputs outerShut.steps == [ [ member "f" "in" ], [ PortName "in", PortName "spare" ] ]
         && map _.outputs outerShut.steps == [ [ member "h" "out" ], [ PortName "out" ] ]
     )

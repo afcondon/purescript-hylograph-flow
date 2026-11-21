@@ -15,6 +15,7 @@ module Hylograph.Flow
   , PortName(..)
   , GroupId(..)
   , stepLabel
+  , itemLabel
   , portLabel
   , Flow(..)
   , Item
@@ -57,15 +58,9 @@ import Data.Set as Set
 import Data.Tuple (Tuple(..))
 import Hylograph.Flow.Internal.Index (gathered, repeated, tally, under)
 
-newtype ItemId = ItemId String
-
-derive instance Eq ItemId
-derive instance Ord ItemId
-instance Show ItemId where
-  show (ItemId s) = "ItemId " <> show s
-
 -- | Which group, of a grouping beside a flow (`Hylograph.Flow.Grouping`).
--- | Here, and not there, because a closed group's step is named by it.
+-- | Here, and not there, because a closed group's step, its summary item and
+-- | the port between them are named by it.
 newtype GroupId = GroupId String
 
 derive instance Eq GroupId
@@ -73,6 +68,22 @@ derive instance Ord GroupId
 
 instance Show GroupId where
   show (GroupId g) = "GroupId " <> show g
+
+-- | Which item. `ItemId`: an item of the source, by the name the source gave
+-- | it. `GroupItem`: the summary item of a closed group under `collapse`,
+-- | which stands for what the group provides to the rest of the flow. They
+-- | are different constructors, as a step's are, so no name a source can give
+-- | an item is the identity of a group's summary.
+data ItemId
+  = ItemId String
+  | GroupItem GroupId
+
+derive instance Eq ItemId
+derive instance Ord ItemId
+instance Show ItemId where
+  show = case _ of
+    ItemId s -> "ItemId " <> show s
+    GroupItem g -> "GroupItem (" <> show g <> ")"
 
 -- | Which step. `StepId`: a step of the source, by the name the source gave
 -- | it. `GroupStep`: the one step a closed group became under `collapse`.
@@ -94,10 +105,14 @@ instance Show StepId where
 -- | `MemberPort`: a port of a closed group, which is a port of one of its
 -- | members seen from outside: the member and the member's port. The member
 -- | may itself be a closed group and its port a `MemberPort`, where a flow
--- | already collapsed is collapsed again.
+-- | already collapsed is collapsed again. `SummaryPort`: the port by which a
+-- | closed group meets a group's summary item: its own, which it writes by
+-- | it, or another closed group's, which it reads by it. (A step that is no
+-- | closed group reads a summary item by its own port.)
 data PortName
   = PortName String
   | MemberPort StepId PortName
+  | SummaryPort GroupId
 
 derive instance Eq PortName
 derive instance Ord PortName
@@ -106,6 +121,7 @@ instance Show PortName where
   show = case _ of
     PortName s -> "PortName " <> show s
     MemberPort step port -> "MemberPort (" <> show step <> ") (" <> show port <> ")"
+    SummaryPort group -> "SummaryPort (" <> show group <> ")"
 
 -- | A step's id as words for a reader: the source's name, or `group:` and
 -- | the group's. For display only: two different ids can read the same (a
@@ -116,12 +132,21 @@ stepLabel = case _ of
   StepId name -> name
   GroupStep (GroupId group) -> "group:" <> group
 
+-- | An item's id as words for a reader: the source's name, or `group:` and
+-- | the group's. For display only, as `stepLabel` is.
+itemLabel :: ItemId -> String
+itemLabel = case _ of
+  ItemId name -> name
+  GroupItem (GroupId group) -> "group:" <> group
+
 -- | A port as words for a reader: the source's name, or the member's label,
--- | a dot, and the member's port. For display only, as `stepLabel` is.
+-- | a dot, and the member's port, or `summary:` and the group's name. For
+-- | display only, as `stepLabel` is.
 portLabel :: PortName -> String
 portLabel = case _ of
   PortName name -> name
   MemberPort member port -> stepLabel member <> "." <> portLabel port
+  SummaryPort (GroupId group) -> "summary:" <> group
 
 -- | What holds a value: a column, a file, a stream, a store. `name` is
 -- | `Nothing` only where the source gives the thing no name (a radio
@@ -342,7 +367,6 @@ project :: forall i s w. Drawing -> Flow i s w -> Projection w
 project drawing (Flow f) = { nodes, edges }
   where
   drawn = drawnBy drawing
-  itemLabel (ItemId s) = s
 
   nodes =
     Array.mapMaybe

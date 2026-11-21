@@ -16,18 +16,39 @@ module Test.Flow.Shapes
 import Prelude
 
 import Data.Array as Array
-import Data.Maybe (Maybe(..))
+import Data.Map as Map
+import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Tuple (Tuple(..))
 import Data.Set (Set)
 import Data.Set as Set
 import Hylograph.Flow (Drawing(..), ElementKey(..), Flow(..), Item, ItemId(..), PortName(..), Step, StepId(..), Wire, WireId(..))
-import Hylograph.Flow.Grouping (GroupId(..), Grouping(..))
+import Hylograph.Flow.Grouping (GroupId(..), Grouping(..), members)
 
 -- | Items carry their place, steps their name, wires their place among the
 -- | wires, in a list, whose `Semigroup` shows the order of a merge.
 type Sized = Flow Int String (Array Int)
 
--- | A flow, a grouping of its steps, and the groups there are to shut.
-type Shaped = { flow :: Sized, forest :: Array Grouping, groups :: Set GroupId }
+-- | A flow, a grouping of its steps, the groups there are to shut, and the
+-- | same grouping with every item held: by the group of the step that writes
+-- | it, or by the first group where no step does.
+type Shaped = { flow :: Sized, forest :: Array Grouping, groups :: Set GroupId, holding :: Array Grouping }
+
+-- | A flow with a forest of groups of steps, and the forest holding items.
+shaped :: Sized -> { forest :: Array Grouping, groups :: Set GroupId } -> Shaped
+shaped flow@(Flow f) grouped = { flow, forest: grouped.forest, groups: grouped.groups, holding }
+  where
+  placeOfStep = Map.fromFoldable $ Array.concat $ Array.mapWithIndex (\place grouping -> members grouping <#> \step -> Tuple step place) grouped.forest
+  writerOf = Map.fromFoldable $ f.wires # Array.mapMaybe \wire -> case wire.id of
+    Writes step _ item -> Just (Tuple item step)
+    Reads _ _ _ -> Nothing
+  placeOfItem item = fromMaybe 0 (Map.lookup item writerOf >>= \step -> Map.lookup step placeOfStep)
+  itemsAt = Map.fromFoldableWith (flip (<>)) (f.items <#> \item -> Tuple (placeOfItem item.id) [ Holds item.id ])
+  holding = Array.mapWithIndex
+    ( \place -> case _ of
+        Group group name within -> Group group name (within <> fromMaybe [] (Map.lookup place itemsAt))
+        loose -> loose
+    )
+    grouped.forest
 
 upTo :: Int -> Array Int
 upTo count = if count <= 0 then [] else Array.range 0 (count - 1)
@@ -52,7 +73,7 @@ inGroupsOf size steps = { forest, groups: Set.fromFoldable (map _.group runs) }
 -- | item0 -step0-> item1 -step1-> …: two wires a step. Its grouping is the
 -- | case `collapse` was first found slow on: every step in one group.
 chain :: Int -> Shaped
-chain wireCount = { flow: Flow { items, steps, wires }, forest: [ Group whole "whole" (map (Member <<< _.id) steps) ], groups: Set.singleton whole }
+chain wireCount = shaped (Flow { items, steps, wires }) { forest: [ Group whole "whole" (map (Member <<< _.id) steps) ], groups: Set.singleton whole }
   where
   whole = GroupId "whole"
   stepCount = max 1 (wireCount / 2)
@@ -67,7 +88,7 @@ chain wireCount = { flow: Flow { items, steps, wires }, forest: [ Group whole "w
 -- | own; the next hub is the item the first of them writes. About two
 -- | wires a step. Grouped in tens.
 fanOuts :: Int -> Shaped
-fanOuts wireCount = { flow: Flow { items, steps, wires }, forest: grouped.forest, groups: grouped.groups }
+fanOuts wireCount = shaped (Flow { items, steps, wires }) grouped
   where
   fan = 50
   stepCount = max 1 (wireCount / 2)
@@ -86,7 +107,7 @@ fanOuts wireCount = { flow: Flow { items, steps, wires }, forest: grouped.forest
 -- | its own group of ten (a package) where there are that many, by a port
 -- | for each. About 8.7 wires a step: 1,300 steps in 130 groups is 11,400.
 moduleGraph :: Int -> Shaped
-moduleGraph wireCount = { flow: Flow { items, steps, wires }, forest: grouped.forest, groups: grouped.groups }
+moduleGraph wireCount = shaped (Flow { items, steps, wires }) grouped
   where
   packageSize = 10
   stepCount = max 1 ((wireCount * 10) / 92)

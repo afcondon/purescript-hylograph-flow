@@ -1,5 +1,8 @@
 -- | The library's functions give what the 0.1.0 ones gave
--- | (`Test.Flow.Reference`), array for array and in the same order: on the
+-- | (`Test.Flow.Reference`), array for array and in the same order, and
+-- | `collapse`, on a grouping of steps alone, what 0.1.1's gave as well
+-- | (`Test.Flow.Reference011`; `asBefore` puts a 0.2.0 result in the 0.1 shape
+-- | and is `Nothing` where it has a summary item): on the
 -- | fixtures, on small made flows with no problems, on small made flows with
 -- | every kind of problem (ids said twice, wires to nothing, a step under
 -- | two groups, two groups of one id), on projections no flow would give,
@@ -23,6 +26,8 @@ import Test.Flow.Check (expect, expectNone, section)
 import Test.Flow.Fixtures (drawings, fixtures)
 import Test.Flow.Generated (Made, Ports(..), chance, chosenOf, describe, describeGrouped, drawingsWith, flowOf, groupedOf, holds, someOf, upTo, verdict)
 import Test.Flow.Reference as Reference
+import Test.Flow.Reference011 (asBefore)
+import Test.Flow.Reference011 (collapse) as Reference011
 import Test.Flow.Shapes (halfTheSteps, shapes)
 import Test.QuickCheck.Gen (Gen, chooseInt)
 
@@ -53,7 +58,7 @@ differently :: forall item step wire. Eq item => Eq step => Eq wire => Semigroup
 differently drawn forest cuts flow =
   (if problems flow == Reference.problems flow then [] else [ "problems differs" ])
     <> Array.concatMap (\d -> drawnDifferently d.name d.drawing flow) drawn
-    <> Array.concatMap (\cut -> if collapse forest cut flow == Reference.collapse forest cut flow then [] else [ "collapse differs, shut " <> show (Array.fromFoldable cut) ]) cuts
+    <> Array.concatMap (\cut -> if asBefore (collapse forest cut flow) == Just (Reference.collapse forest cut flow) && asBefore (collapse forest cut flow) == Just (Reference011.collapse forest cut flow) then [] else [ "collapse differs, shut " <> show (Array.fromFoldable cut) ]) cuts
 
 -- | One of an array, or the given where there is none.
 oneOf :: forall a. a -> Array a -> Gen a
@@ -163,11 +168,11 @@ suite = do
     let
       once = collapse loose.forest loose.closed loose.flow
       onceBefore = Reference.collapse loose.forest loose.closed loose.flow
-      again = [ Group (GroupId "again") "Again" (map (Member <<< _.id) (Array.take 2 (unFlow once).steps)) ]
+      again = [ Group (GroupId "again") "Again" (map (Member <<< _.id) (Array.take 2 (unFlow onceBefore).steps)) ]
     in
       verdict (describeGrouped { flow: loose.flow, forest: loose.forest, closed: loose.closed })
-        ( (if once == onceBefore then [] else [ "collapse differs" ])
-            <> differently (drawingsWith loose.chosen) again [ Set.singleton (GroupId "again") ] once
+        ( (if asBefore once == Just onceBefore then [] else [ "collapse differs" ])
+            <> differently (drawingsWith loose.chosen) again [ Set.singleton (GroupId "again") ] onceBefore
         )
   holds "projections no flow gives (nodes twice, edges to nothing, rings): layers, leafMass, isolated" 1500 $ projectionOf <#> \projection ->
     verdict (show (map _.key projection.nodes) <> " " <> show (projection.edges <#> \edge -> [ edge.from, edge.to ])) (readDifferently "made" projection)

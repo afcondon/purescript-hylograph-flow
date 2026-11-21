@@ -102,3 +102,41 @@ the limit; `(not run)`: a smaller size of the same case had already passed the l
 | collapse | chain | 12,000 | 6,000 | > 180 s | 203 |
 | collapse | fan-outs | 12,000 | 6,000 | 152,519 | 350 |
 | collapse | modules | 11,392 | 1,304 | 146,414 | 314 |
+
+## 0.2.0: groups that hold items
+
+From `spago build && node bench.mjs --only library --limit 60` on 2026-11-21, the same machine, under more load
+than the run above (every function, `collapse` aside, is unchanged in 0.2.0 and came out up to a third slower than
+above). So `collapse` is set against 0.1.1's `collapse` timed in the same run: `collapse-0.1.1` is
+`test/Test/Flow/Reference011.purs`, 0.1.1's word for word; `collapse` is 0.2.0's on the same grouping of steps alone;
+`collapse-holding` is 0.2.0's with every item held by the group of the step that writes it.
+
+| function | flow | wires | steps | ms |
+|---|---|---:|---:|---:|
+| collapse | chain | 1,000 | 500 | 40 |
+| collapse | chain | 10,000 | 5,000 | 233 |
+| collapse | chain | 50,000 | 25,000 | 999 |
+| collapse | fan-outs | 1,000 | 500 | 57 |
+| collapse | fan-outs | 10,000 | 5,000 | 354 |
+| collapse | fan-outs | 50,000 | 25,000 | 1,740 |
+| collapse | modules | 798 | 108 | 47 |
+| collapse | modules | 9,456 | 1,086 | 344 |
+| collapse | modules | 48,133 | 5,434 | 1,736 |
+| collapse-0.1.1 | chain | 1,000 | 500 | 39 |
+| collapse-0.1.1 | chain | 10,000 | 5,000 | 205 |
+| collapse-0.1.1 | chain | 50,000 | 25,000 | 909 |
+| collapse-0.1.1 | fan-outs | 1,000 | 500 | 56 |
+| collapse-0.1.1 | fan-outs | 10,000 | 5,000 | 343 |
+| collapse-0.1.1 | fan-outs | 50,000 | 25,000 | 1,639 |
+| collapse-0.1.1 | modules | 798 | 108 | 45 |
+| collapse-0.1.1 | modules | 9,456 | 1,086 | 341 |
+| collapse-0.1.1 | modules | 48,133 | 5,434 | 1,811 |
+| collapse-holding | chain | 1,000 | 500 | 42 |
+| collapse-holding | chain | 10,000 | 5,000 | 230 |
+| collapse-holding | chain | 50,000 | 25,000 | 1,064 |
+| collapse-holding | fan-outs | 1,000 | 500 | 54 |
+| collapse-holding | fan-outs | 10,000 | 5,000 | 321 |
+| collapse-holding | fan-outs | 50,000 | 25,000 | 1,557 |
+| collapse-holding | modules | 798 | 108 | 44 |
+| collapse-holding | modules | 9,456 | 1,086 | 320 |
+| collapse-holding | modules | 48,133 | 5,434 | 1,810 |

@@ -30,7 +30,7 @@ import Prelude
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Maybe (Maybe(..))
-import Hylograph.Flow (Drawing(..), Edge, ElementKey(..), Flow(..), Item, ItemId(..), PortName(..), Step, StepId(..), WireId(..), plain, stepLabel)
+import Hylograph.Flow (Drawing(..), Edge, ElementKey(..), Flow(..), Item, ItemId(..), PortName(..), Step, StepId(..), WireId(..), itemLabel, plain, stepLabel)
 
 -- | A flow with nothing in its payloads.
 type Bare = Flow Unit Unit Unit
@@ -169,6 +169,6 @@ drawings =
   ]
   where
   early = case _ of
-    ItemKey (ItemId name) -> name <= "f"
+    ItemKey itemId -> itemLabel itemId <= "f"
     StepKey stepId -> stepLabel stepId <= "f"
     WireKey _ -> false

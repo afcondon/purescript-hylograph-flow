@@ -26,6 +26,7 @@ import Hylograph.Flow as Library
 import Hylograph.Flow.Grouping as LibraryGrouping
 import Hylograph.Flow.Laws as LibraryLaws
 import Test.Flow.Reference as Reference
+import Test.Flow.Reference011 as Reference011
 import Test.Flow.Shapes (Shaped, halfTheSteps, shapes)
 
 foreign import milliseconds :: Effect Number
@@ -59,12 +60,22 @@ measures =
   , faults "faults-Steps" Steps
   , faults "faults-Both" Both
   , { name: "collapse"
-    , run: \implementation shaped _ -> Array.length $ _.wires $ unFlow case implementation of
-        OfLibrary -> LibraryGrouping.collapse shaped.forest shaped.groups shaped.flow
-        OfReference -> Reference.collapse shaped.forest shaped.groups shaped.flow
+    , run: \implementation shaped _ -> case implementation of
+        OfLibrary -> wireCount (LibraryGrouping.collapse shaped.forest shaped.groups shaped.flow)
+        OfReference -> wireCount (Reference.collapse shaped.forest shaped.groups shaped.flow)
+    }
+  -- 0.1.1's collapse (`Test.Flow.Reference011`), whichever implementation is asked for
+  , { name: "collapse-0.1.1"
+    , run: \_ shaped _ -> Array.length (unFlow (Reference011.collapse shaped.forest shaped.groups shaped.flow)).wires
+    }
+  -- the library's collapse with every item held by a group, whichever is asked for
+  , { name: "collapse-holding"
+    , run: \_ shaped _ -> Array.length (unFlow (LibraryGrouping.collapse shaped.holding shaped.groups shaped.flow)).wires
     }
   ]
   where
+  wireCount :: forall item step wire. Library.Flow item step wire -> Int
+  wireCount flow = Array.length (unFlow flow).wires
   projecting name drawingOf =
     { name
     , run: \implementation shaped ->

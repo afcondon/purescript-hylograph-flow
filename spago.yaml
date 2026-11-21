@@ -10,7 +10,7 @@ package:
     them, and wires between, with the generic projections a shared renderer
     draws from it when the payloads are erased.
   publish:
-    version: 0.1.1
+    version: 0.2.0
     license: MIT
     location:
       githubOwner: afcondon

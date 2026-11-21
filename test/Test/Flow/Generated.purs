@@ -31,7 +31,7 @@ import Data.Traversable (for)
 import Effect (Effect)
 import Effect.Console (log)
 import Hylograph.Flow (Drawing(..), Edge, ElementKey(..), Flow(..), ItemId(..), PortName(..), Projection, StepId(..), Wire, WireId(..), erase, mapPayloads, problems, project, unFlow)
-import Hylograph.Flow.Grouping (Collapsed(..), GroupId(..), Grouping(..), collapse, groupStep)
+import Hylograph.Flow.Grouping (Collapsed(..), CollapsedItem(..), GroupId(..), Grouping(..), collapse, groupStep)
 import Hylograph.Flow.Laws (projectionFaults)
 import Test.Flow.Check (expect, section)
 import Test.QuickCheck (Result(..), mkSeed, quickCheckPure)
@@ -167,6 +167,7 @@ describeGrouped g = describe g.flow <> "; closed " <> show (Array.fromFoldable g
   where
   showGrouping = case _ of
     Member s -> show s
+    Holds i -> show i
     Group gid _ within -> show gid <> " " <> show (map showGrouping within)
 
 -- | Each fault as a failure that says which flow it was.
@@ -201,7 +202,7 @@ nonDecreasing xs = all identity (Array.zipWith (<=) xs (Array.drop 1 xs))
 
 -- | What `collapse` promises of any flow without problems, apart from the
 -- | flow's being well formed (see `Test.Flow.Grouping` for where that fails).
-collapseFaults :: Grouped -> Flow Int (Collapsed String) (Array Int) -> Array String
+collapseFaults :: Grouped -> Flow (CollapsedItem Int) (Collapsed Int String) (Array Int) -> Array String
 collapseFaults g coarser =
   (if Array.length (Array.nub ids) == Array.length ids then [] else [ "two wires of the coarser flow share an identity" ])
     <> (if Array.length (Array.nub stepIds) == Array.length stepIds then [] else [ "two steps of the coarser flow share an id" ])
@@ -281,8 +282,8 @@ suite = do
       if project d.drawing made.flow == project d.drawing made.flow then [] else [ d.name <> ": two projections of one flow differ" ]
 
   section "made flows: collapse"
-  holds "with nothing shut, collapse is mapPayloads identity Kept identity, whatever the forest" 300 $ groupedOf Shared <#> \g ->
-    verdict (describeGrouped g) (if collapse g.forest Set.empty g.flow == mapPayloads identity Kept identity g.flow then [] else [ "collapsing nothing changed the flow" ])
+  holds "with nothing shut, collapse is mapPayloads KeptItem Kept identity, whatever the forest" 300 $ groupedOf Shared <#> \g ->
+    verdict (describeGrouped g) (if collapse g.forest Set.empty g.flow == mapPayloads KeptItem Kept identity g.flow then [] else [ "collapsing nothing changed the flow" ])
   holds "one wire to a port: the coarser flow has no problems" 500 $ groupedOf OneWireEach <#> \g ->
     verdict (describeGrouped g) (map show (problems (collapse g.forest g.closed g.flow)))
   holds "one wire to a port: the coarser flow's projections are lawful" 300 $ groupedOf OneWireEach <#> \g ->

@@ -20,7 +20,7 @@ const sizes = argument("sizes", "1000,10000,50000").split(",").map(Number);
 const only = argument("only", null);
 const onlyMeasure = argument("measure", null);
 
-const measures = ["problems", "project-Holders", "project-Steps", "project-Both", "project-Chosen", "layers-Steps", "faults-Holders", "faults-Steps", "faults-Both", "collapse"]
+const measures = ["problems", "project-Holders", "project-Steps", "project-Both", "project-Chosen", "layers-Steps", "faults-Holders", "faults-Steps", "faults-Both", "collapse", "collapse-0.1.1", "collapse-holding"]
   .filter((name) => !onlyMeasure || name === onlyMeasure);
 const shapes = ["chain", "fan-outs", "modules"];
 const implementations = ["reference", "library"].filter((name) => !only || name === only);

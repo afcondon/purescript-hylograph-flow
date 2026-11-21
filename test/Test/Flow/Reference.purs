@@ -1,4 +1,6 @@
--- | The library's functions as they were at 0.1.0, word for word: the
+-- | The library's functions as they were at 0.1.0, word for word (but for
+-- | `collapse`'s result type, which is 0.1's, kept in `Test.Flow.Reference011`,
+-- | and one line for a grouping's `Holds`, which is no step): the
 -- | definition the faster ones in `src/` are held equal to
 -- | (`Test.Flow.Identical`), and the "before" of `Test.Flow.Benchmark`. Slow
 -- | by design (each scans every wire inside a loop); nothing here is to be
@@ -26,8 +28,9 @@ import Data.Maybe (Maybe(..), fromMaybe, isJust, isNothing)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..))
-import Hylograph.Flow (Drawing, Edge, ElementKey(..), Flow(..), GroupId, ItemId(..), PortName(..), Problem(..), Projection, StepId, Wire, WireId(..), drawnBy, stepLabel, wireEnds)
-import Hylograph.Flow.Grouping (Collapsed(..), Grouping(..), groupStep, members)
+import Hylograph.Flow (Drawing, Edge, ElementKey(..), Flow(..), GroupId, ItemId, PortName(..), Problem(..), Projection, StepId, Wire, WireId(..), drawnBy, itemLabel, stepLabel, wireEnds)
+import Hylograph.Flow.Grouping (Grouping(..), groupStep, members)
+import Test.Flow.Reference011 (Collapsed(..))
 
 -- | Every wire names an existing item, step and port; each item has at most
 -- | one writer; ids are unique, a wire's too (two wires with one identity
@@ -66,7 +69,6 @@ project :: forall i s w. Drawing -> Flow i s w -> Projection w
 project drawing (Flow f) = { nodes, edges }
   where
   drawn = drawnBy drawing
-  itemLabel (ItemId s) = s
 
   nodes =
     Array.mapMaybe
@@ -275,6 +277,7 @@ collapse forest closed (Flow f) = Flow { items, steps, wires }
   shut = Array.concatMap outermost forest
   outermost = case _ of
     Member _ -> []
+    Holds _ -> []
     g@(Group gid name inner)
       | Set.member gid closed -> [ { gid, name, steps: members g } ]
       | otherwise -> Array.concatMap outermost inner

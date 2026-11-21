@@ -9,6 +9,7 @@ import Test.Flow.Collection as Collection
 import Test.Flow.Example as Example
 import Test.Flow.Generated as Generated
 import Test.Flow.Grouping as Grouping
+import Test.Flow.Holding as Holding
 import Test.Flow.Identical as Identical
 import Test.Flow.Overlay as Overlay
 import Test.Flow.Problems as Problems
@@ -20,6 +21,7 @@ main = do
   Projection.suite
   Overlay.suite
   Grouping.suite
+  Holding.suite
   Collection.suite
   Generated.suite
   Example.suite
