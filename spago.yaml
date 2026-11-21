@@ -10,7 +10,7 @@ package:
     them, and wires between, with the generic projections a shared renderer
     draws from it when the payloads are erased.
   publish:
-    version: 0.1.0
+    version: 0.1.1
     license: MIT
     location:
       githubOwner: afcondon
@@ -28,5 +28,6 @@ package:
       - console: ">=6.1.0 <7.0.0"
       - effect: ">=4.0.0 <5.0.0"
       - exceptions: ">=6.1.0 <7.0.0"
+      - integers: ">=6.0.0 <7.0.0"
       - lists: ">=7.0.0 <8.0.0"
       - quickcheck: ">=8.0.1 <9.0.0"

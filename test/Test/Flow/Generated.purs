@@ -1,6 +1,22 @@
 -- | What must hold of every flow, held on a few hundred small well-formed
 -- | flows made from a fixed seed, so that a run is the same run every time.
-module Test.Flow.Generated (suite) where
+module Test.Flow.Generated
+  ( suite
+  , Made
+  , Ports(..)
+  , Grouped
+  , upTo
+  , chance
+  , someOf
+  , flowOf
+  , chosenOf
+  , groupedOf
+  , drawingsWith
+  , describe
+  , describeGrouped
+  , verdict
+  , holds
+  ) where
 
 import Prelude
 
@@ -14,7 +30,7 @@ import Data.Set as Set
 import Data.Traversable (for)
 import Effect (Effect)
 import Effect.Console (log)
-import Hylograph.Flow (Drawing(..), Edge, ElementKey(..), Flow(..), ItemId(..), PortName(..), Problem(..), Projection, StepId(..), Wire, WireId(..), erase, mapPayloads, problems, project, unFlow)
+import Hylograph.Flow (Drawing(..), Edge, ElementKey(..), Flow(..), ItemId(..), PortName(..), Projection, StepId(..), Wire, WireId(..), erase, mapPayloads, problems, project, unFlow)
 import Hylograph.Flow.Grouping (Collapsed(..), GroupId(..), Grouping(..), collapse, groupStep)
 import Hylograph.Flow.Laws (projectionFaults)
 import Test.Flow.Check (expect, section)

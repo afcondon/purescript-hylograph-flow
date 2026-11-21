@@ -51,10 +51,11 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Foldable (foldl, maximum)
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromMaybe, isNothing)
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..))
+import Hylograph.Flow.Internal.Index (gathered, repeated, tally, under)
 
 newtype ItemId = ItemId String
 
@@ -232,22 +233,24 @@ instance Show Problem where
 -- | Every wire names an existing item, step and port; each item has at most
 -- | one writer; ids are unique, a wire's too (two wires with one identity
 -- | could not be told apart by an overlay).
+-- |
+-- | In order: items said twice, steps said twice, wires said twice (each
+-- | once, in the order first met); then what is wrong with each wire, wire
+-- | by wire; then the items written twice.
 problems :: forall i s w. Flow i s w -> Array Problem
 problems (Flow f) = duplicateItems <> duplicateSteps <> duplicateWires <> Array.concatMap wireProblems wireIds <> twice
   where
   wireIds = map _.id f.wires
   duplicateWires = map DuplicateWire (repeated wireIds)
-  itemIds = map _.id f.items
-  stepIds = map _.id f.steps
-  stepMap = Map.fromFoldable (f.steps <#> \st -> Tuple st.id st)
-  repeated :: forall a. Ord a => Array a -> Array a
-  repeated xs = Array.filter (\x -> Array.length (Array.filter (_ == x) xs) > 1) (Array.nub xs)
-  duplicateItems = map DuplicateItem (repeated itemIds)
-  duplicateSteps = map DuplicateStep (repeated stepIds)
-  item i = if Array.elem i itemIds then [] else [ UnknownItem i ]
-  port pick s p = case Map.lookup s stepMap of
+  itemIds = Set.fromFoldable (map _.id f.items)
+  -- where two steps share an id, the later one's ports
+  portsOf = Map.fromFoldable (f.steps <#> \st -> Tuple st.id { inputs: Set.fromFoldable st.inputs, outputs: Set.fromFoldable st.outputs })
+  duplicateItems = map DuplicateItem (repeated (map _.id f.items))
+  duplicateSteps = map DuplicateStep (repeated (map _.id f.steps))
+  item i = if Set.member i itemIds then [] else [ UnknownItem i ]
+  port pick s p = case Map.lookup s portsOf of
     Nothing -> [ UnknownStep s ]
-    Just st -> if Array.elem p (pick st) then [] else [ UnknownPort s p ]
+    Just ports -> if Set.member p (pick ports) then [] else [ UnknownPort s p ]
   wireProblems = case _ of
     Reads i s p -> item i <> port _.inputs s p
     Writes s p i -> item i <> port _.outputs s p
@@ -333,7 +336,6 @@ type Edge wire =
   }
 
 type Projection wire = { nodes :: Array Node, edges :: Array (Edge wire) }
-
 -- | Nodes in array order, items before steps. Edges in the order of the
 -- | wire that enters their target.
 project :: forall i s w. Drawing -> Flow i s w -> Projection w
@@ -352,13 +354,15 @@ project drawing (Flow f) = { nodes, edges }
         )
         f.steps
 
-  -- the wires into a step, and into an item, whole
-  readsOf s = f.wires # Array.mapMaybe \w -> case w.id of
-    Reads i s' _ | s' == s -> Just { item: i, wire: w }
-    _ -> Nothing
-  writesOf i = f.wires # Array.mapMaybe \w -> case w.id of
-    Writes s p i' | i' == i -> Just { step: s, port: p, wire: w }
-    _ -> Nothing
+  -- the wires into each step, and into each item, whole, in wire order
+  readsInto = gathered $ f.wires # Array.mapMaybe \w -> case w.id of
+    Reads i s _ -> Just (Tuple s { item: i, wire: w })
+    Writes _ _ _ -> Nothing
+  writesInto = gathered $ f.wires # Array.mapMaybe \w -> case w.id of
+    Writes s p i -> Just (Tuple i { step: s, port: p, wire: w })
+    Reads _ _ _ -> Nothing
+  readsOf s = under s readsInto
+  writesOf i = under i writesInto
 
   -- the drawn sources an element is reached from, walking wires backwards,
   -- with the wires walked, source first
@@ -397,37 +401,75 @@ project drawing (Flow f) = { nodes, edges }
 layers :: forall w. Projection w -> Map ElementKey Int
 layers p = foldl visit Map.empty (topological p)
   where
+  -- per node, where its edges come from, its own loops left out
+  feeding = gathered (Array.mapMaybe (\e -> if e.from /= e.to then Just (Tuple e.to e.from) else Nothing) p.edges)
   visit acc key =
     let
-      feeders = Array.mapMaybe (\e -> if e.to == key && e.from /= key then Map.lookup e.from acc else Nothing) p.edges
+      feeders = Array.mapMaybe (\from -> Map.lookup from acc) (under key feeding)
     in
       Map.insert key (fromMaybe (-1) (maximum feeders) + 1) acc
 
 -- | Kahn's order, ties by node order; anything left (a cycle) at the end.
+-- |
+-- | A node is ready when every edge into it from another element comes from
+-- | one already placed; the next placed is the ready node that stands first
+-- | among the nodes. Each node counts the edges it waits on, and the ready
+-- | ones are kept in the order of their places, so that placing a node costs
+-- | its own edges and no more.
 topological :: forall w. Projection w -> Array ElementKey
-topological p = go [] (map _.key p.nodes)
+topological p = Array.fromFoldable placed.order <> Array.filter (\key -> not (Set.member key placed.done)) keys
   where
-  go done remaining =
-    case Array.find ready remaining of
-      Just next -> go (Array.snoc done next) (Array.filter (_ /= next) remaining)
-      Nothing -> done <> remaining
-    where
-    ready key = Array.all (\e -> e.to /= key || e.from == key || Array.elem e.from done) p.edges
+  keys = map _.key p.nodes
+  -- each node with the place it first stands at
+  stands = Array.nubBy (comparing _.key) (Array.mapWithIndex (\place key -> { place, key }) keys)
+  placeOf = Map.fromFoldable (stands <#> \node -> Tuple node.key node.place)
+  -- the edges a node waits on: every edge into it but its own loops
+  held = Array.filter (\e -> e.from /= e.to) p.edges
+  waitingAtFirst = tally (map _.to held)
+  onward = gathered (held <#> \e -> Tuple e.from e.to)
+  readyAtFirst = Set.fromFoldable (Array.mapMaybe (\node -> if Map.member node.key waitingAtFirst then Nothing else Just (Tuple node.place node.key)) stands)
+
+  placed = go { order: Map.empty, done: Set.empty, waiting: waitingAtFirst, ready: readyAtFirst }
+
+  go state = case Set.findMin state.ready of
+    Nothing -> state
+    Just next@(Tuple _ key) ->
+      let
+        released = foldl release { waiting: state.waiting, ready: Set.delete next state.ready } (under key onward)
+      in
+        go
+          { order: Map.insert (Map.size state.order) key state.order
+          , done: Set.insert key state.done
+          , waiting: released.waiting
+          , ready: released.ready
+          }
+
+  -- one edge fewer to wait on; ready, where that was the last
+  release acc target = case Map.lookup target acc.waiting of
+    Nothing -> acc
+    Just 1 ->
+      { waiting: Map.delete target acc.waiting
+      , ready: case Map.lookup target placeOf of
+          Just place -> Set.insert (Tuple place target) acc.ready
+          Nothing -> acc.ready
+      }
+    Just count -> acc { waiting = Map.insert target (count - 1) acc.waiting }
 
 -- | Per node, the set of nodes with no incoming edge that reach it (itself,
 -- | for such a node).
 leafMass :: forall w. Projection w -> Map ElementKey (Set ElementKey)
 leafMass p = foldl visit Map.empty (topological p)
   where
+  feeding = gathered (p.edges <#> \e -> Tuple e.to e.from)
   visit acc key =
     let
-      feeders = Array.nub (Array.mapMaybe (\e -> if e.to == key then Just e.from else Nothing) p.edges)
+      feeders = Array.nub (under key feeding)
     in
       if Array.null feeders then Map.insert key (Set.singleton key) acc
       else Map.insert key (Set.unions (feeders <#> \x -> fromMaybe Set.empty (Map.lookup x acc))) acc
 
 -- | Nodes no edge touches, in node order.
 isolated :: forall w. Projection w -> Array ElementKey
-isolated p = Array.filter lonely (map _.key p.nodes)
+isolated p = Array.filter (\key -> not (Set.member key touched)) (map _.key p.nodes)
   where
-  lonely key = isNothing (Array.find (\e -> e.from == key || e.to == key) p.edges)
+  touched = Set.fromFoldable (p.edges # Array.concatMap \e -> [ e.from, e.to ])

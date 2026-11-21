@@ -9,6 +9,7 @@ import Test.Flow.Collection as Collection
 import Test.Flow.Example as Example
 import Test.Flow.Generated as Generated
 import Test.Flow.Grouping as Grouping
+import Test.Flow.Identical as Identical
 import Test.Flow.Overlay as Overlay
 import Test.Flow.Problems as Problems
 import Test.Flow.Projection as Projection
@@ -22,4 +23,5 @@ main = do
   Collection.suite
   Generated.suite
   Example.suite
+  Identical.suite
   log "flow: all green"
